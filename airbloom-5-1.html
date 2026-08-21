@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AirBloom — Flower Air Canvas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Cormorant+Garamond:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0d12;
+    --bg2: #10151d;
+    --panel: rgba(16,21,29,0.72);
+    --line: rgba(255,255,255,0.08);
+    --ink: #e9edf3;
+    --dim: #8892a0;
+    --rose: #ff5d7a;
+    --tulip: #ff9fd1;
+    --sunflower: #ffcb3d;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0; height:100%;
+    background: radial-gradient(1200px 800px at 20% -10%, #131a24 0%, var(--bg) 55%) fixed;
+    color: var(--ink);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+  .wrap{
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+  header{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap: 16px; flex-wrap: wrap;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 16px;
+  }
+  h1{
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: clamp(30px, 5vw, 44px);
+    margin: 0;
+    letter-spacing: 0.3px;
+    background: linear-gradient(90deg, var(--rose), var(--tulip) 55%, var(--sunflower));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .tagline{
+    color: var(--dim);
+    font-size: 13px;
+    margin-top: 4px;
+    letter-spacing: 0.4px;
+  }
+  .stage{
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-left: none; border-right: none;
+    background: #05070a;
+    width: 100vw;
+    height: 100vh;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.7);
+  }
+  video, canvas{
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  video{ transform: scaleX(-1); opacity: 0.55; object-fit: cover; }
+  #flowerCanvas{ z-index: 3; pointer-events: none; }
+  #fxCanvas{ z-index: 4; pointer-events: none; }
+
+  .veil{
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(5,7,10,0.86);
+    flex-direction: column; gap: 16px; text-align: center; padding: 24px;
+  }
+  .veil.hidden{ display: none; }
+  .start-btn{
+    font-family: inherit;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    padding: 13px 26px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,203,61,0.5);
+    background: linear-gradient(90deg, rgba(255,93,122,0.15), rgba(255,203,61,0.15));
+    color: var(--ink);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .start-btn:hover{ transform: translateY(-1px); box-shadow: 0 0 24px -6px var(--sunflower); }
+  .veil p{ color: var(--dim); font-size: 13px; max-width: 340px; margin: 0; }
+
+  .hint-pill{
+    position: absolute; bottom: 14px; left: 14px; z-index: 6;
+    font-size: 11px; color: var(--dim);
+    background: rgba(8,10,14,0.6);
+    border: 1px solid var(--line);
+    padding: 6px 12px; border-radius: 999px;
+  }
+
+  .controls{
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-top: 14px; flex-wrap: wrap;
+  }
+  .controls .left{ display:flex; gap:10px; flex-wrap: wrap; }
+  button.ghost{
+    font-family: inherit; font-size: 12px; letter-spacing: 0.5px;
+    padding: 9px 16px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel);
+    color: var(--ink); cursor: pointer;
+  }
+  button.ghost:hover{ border-color: rgba(255,255,255,0.25); }
+
+  .legend{
+    margin-top: 26px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+  }
+  .card{
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .card .swatch{
+    width: 22px; height: 22px; border-radius: 50%;
+    display: inline-block; margin-bottom: 10px;
+  }
+  .card h3{ margin: 0 0 4px; font-size: 14px; font-weight: 500; }
+  .card p{ margin: 0; font-size: 12.5px; color: var(--dim); line-height: 1.5; }
+
+  footer{ margin-top: 28px; color: var(--dim); font-size: 11.5px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>AirBloom</h1>
+      <div class="tagline">plant roses in the air with a finger count</div>
+    </div>
+  </header>
+
+  <div class="stage" id="stage">
+    <video id="video" playsinline muted></video>
+    <canvas id="flowerCanvas"></canvas>
+    <canvas id="fxCanvas"></canvas>
+    <div class="hint-pill" id="hintPill">1–3 fingers = plant roses</div>
+    <div class="veil" id="veil">
+      <div style="font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--dim);">Camera required</div>
+      <button class="start-btn" id="startBtn">Start Camera</button>
+      <p>Everything runs locally in your browser. Nothing is recorded or uploaded — the video is only used to track your hand.</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="left">
+      <button class="ghost" id="clearBtn">Clear canvas</button>
+    </div>
+    <div class="left">
+      <button class="ghost" id="skeletonBtn">Hand outline: on</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="card">
+      <span class="swatch" style="background: var(--rose);"></span>
+      <h3>Rose</h3>
+      <p>Hold up 1–3 fingers and move your hand to plant roses as you go.</p>
+    </div>
+  </div>
+
+  <footer>Works best in good lighting, hand upright, facing the camera, roughly arm's length away.</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const fxCanvas = document.getElementById('fxCanvas');
+  const flowerCanvas = document.getElementById('flowerCanvas');
+  const fldctx = flowerCanvas.getContext('2d');
+  const fctx = fxCanvas.getContext('2d');
+  const veil = document.getElementById('veil');
+  const startBtn = document.getElementById('startBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const skeletonBtn = document.getElementById('skeletonBtn');
+
+  const W = 960, H = 720;
+  let lastStamp = 0;
+  let showSkeleton = true;
+
+  function sizeCanvases(){
+    [flowerCanvas, fxCanvas].forEach(c => { c.width = W; c.height = H; });
+  }
+  sizeCanvases();
+
+  // ---------- flower lifecycle (bloom in, hold, fade out) ----------
+  const FLOWER_BLOOM_MS = 140;   // soft pop-in
+  const FLOWER_HOLD_MS  = 220;   // fully visible
+  const FLOWER_FADE_MS  = 260;   // soft fade out
+  const FLOWER_LIFETIME_MS = FLOWER_BLOOM_MS + FLOWER_HOLD_MS + FLOWER_FADE_MS;
+  let flowers = [];
+
+  function easeOutBack(t){
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+  function easeInQuad(t){ return t * t; }
+
+  function plantFlower(type, x, y, scale, rot){
+    flowers.push({ type, x, y, scale, rot, plantedAt: performance.now() });
+  }
+
+  function animateFlowers(){
+    const now = performance.now();
+    fldctx.clearRect(0, 0, flowerCanvas.width, flowerCanvas.height);
+    flowers = flowers.filter(f => now - f.plantedAt < FLOWER_LIFETIME_MS);
+    flowers.forEach(f => {
+      const age = now - f.plantedAt;
+      let opacity, scaleMul;
+      if (age < FLOWER_BLOOM_MS){
+        const t = age / FLOWER_BLOOM_MS;
+        opacity = t;
+        scaleMul = Math.max(0, easeOutBack(t));
+      } else if (age < FLOWER_BLOOM_MS + FLOWER_HOLD_MS){
+        opacity = 1;
+        scaleMul = 1;
+      } else {
+        const t = (age - FLOWER_BLOOM_MS - FLOWER_HOLD_MS) / FLOWER_FADE_MS;
+        opacity = 1 - easeInQuad(t);
+        scaleMul = 1 + t * 0.12;
+      }
+      fldctx.save();
+      fldctx.globalAlpha = Math.max(0, Math.min(1, opacity));
+      FLOWERS[f.type](fldctx, f.x, f.y, f.scale * scaleMul, f.rot);
+      fldctx.restore();
+    });
+    requestAnimationFrame(animateFlowers);
+  }
+  requestAnimationFrame(animateFlowers);
+
+  function flipX(x){ return (1 - x) * flowerCanvas.width; }
+  function toY(y){ return y * flowerCanvas.height; }
+
+  clearBtn.addEventListener('click', () => {
+    flowers = [];
+    fldctx.clearRect(0, 0, flowerCanvas.width, flowerCanvas.height);
+  });
+  skeletonBtn.addEventListener('click', () => {
+    showSkeleton = !showSkeleton;
+    skeletonBtn.textContent = 'Hand outline: ' + (showSkeleton ? 'on' : 'off');
+  });
+
+  // ---------- gesture helpers ----------
+  function isExtended(lm, tip, pip){ return lm[tip].y < lm[pip].y; }
+
+  function fingerState(lm){
+    const fingers = {
+      index:  isExtended(lm, 8, 6),
+      middle: isExtended(lm, 12, 10),
+      ring:   isExtended(lm, 16, 14),
+      pinky:  isExtended(lm, 20, 18),
+    };
+    const count = Object.values(fingers).filter(Boolean).length;
+    return { fingers, count };
+  }
+
+  // ---------- flower stamps ----------
+  function drawRose(ctx, x, y, scale, rot){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.scale(scale, scale);
+    const layers = [
+      { r: 16, petals: 6, color: '#c81e4f' },
+      { r: 11, petals: 6, color: '#ff5d7a' },
+      { r: 6,  petals: 5, color: '#ff9fb4' },
+    ];
+    layers.forEach(layer => {
+      for (let i = 0; i < layer.petals; i++){
+        const a = (i / layer.petals) * Math.PI * 2;
+        ctx.save();
+        ctx.rotate(a);
+        ctx.beginPath();
+        ctx.ellipse(layer.r, 0, layer.r * 0.9, layer.r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fillStyle = layer.color;
+        ctx.globalAlpha = 0.92;
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+    ctx.beginPath();
+    ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#7a0f2b';
+    ctx.globalAlpha = 1;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const FLOWERS = { 1: drawRose, 2: drawRose, 3: drawRose };
+
+  // ---------- skeleton (subtle live feedback, fx layer, cleared each frame) ----------
+  function drawSkeletonDots(lm){
+    fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+    if (!showSkeleton) return;
+    const tips = [4, 8, 12, 16, 20];
+    fctx.save();
+    fctx.globalAlpha = 0.55;
+    tips.forEach(i => {
+      fctx.beginPath();
+      fctx.arc(flipX(lm[i].x), toY(lm[i].y), 4, 0, Math.PI * 2);
+      fctx.fillStyle = '#ffcb3d';
+      fctx.fill();
+    });
+    fctx.restore();
+  }
+
+  // ---------- main results handler ----------
+  function onResults(results){
+    if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0){
+      fctx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+      return;
+    }
+    const lm = results.multiHandLandmarks[0];
+    drawSkeletonDots(lm);
+
+    const { count } = fingerState(lm);
+
+    if (count >= 1 && count <= 3){
+      const now = performance.now();
+      if (now - lastStamp > 90){
+        lastStamp = now;
+        const x = flipX(lm[8].x), y = toY(lm[8].y);
+        const scale = 0.85 + Math.random() * 0.35;
+        const rot = Math.random() * Math.PI * 2;
+        plantFlower(count, x, y, scale, rot);
+      }
+    }
+  }
+
+  // ---------- mediapipe setup ----------
+  const hands = new Hands({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.65,
+    minTrackingConfidence: 0.6
+  });
+  hands.onResults(onResults);
+
+  let camera = null;
+
+  startBtn.addEventListener('click', async () => {
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: W, height: H }, audio: false });
+      video.srcObject = stream;
+      await video.play();
+      veil.classList.add('hidden');
+
+      camera = new Camera(video, {
+        onFrame: async () => { await hands.send({ image: video }); },
+        width: W,
+        height: H
+      });
+      camera.start();
+    } catch (err){
+      alert('Could not access the camera: ' + err.message + '\n\nCheck that this page has camera permission, and that no other app is using the webcam.');
+    }
+  });
+})();
+</script>
+</body>
+</html>
