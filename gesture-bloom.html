@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>GESTURE BLOOM // Holographic Flower Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan: #5be3ff;
+    --cyan-dim: #2a7f96;
+    --amber: #ffb454;
+    --magenta: #ff4fa3;
+    --ink: #04070c;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--ink); overflow:hidden;
+    font-family:'Rajdhani',sans-serif;
+  }
+  #stage{
+    position:fixed; inset:0; width:100vw; height:100vh;
+  }
+  video, canvas{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover;
+  }
+  video{
+    transform: scaleX(-1);
+    filter: saturate(0.65) brightness(0.55) contrast(1.05);
+  }
+  canvas{ pointer-events:none; }
+
+  #vignette{
+    position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(ellipse at center, rgba(4,7,12,0) 45%, rgba(4,7,12,0.75) 100%);
+  }
+
+  .hud{
+    position:absolute; pointer-events:none;
+    color:var(--cyan); font-family:'Orbitron',sans-serif;
+    text-shadow: 0 0 8px rgba(91,227,255,0.6);
+    letter-spacing: 0.12em;
+  }
+  #title{
+    top:28px; left:32px; font-size:14px; font-weight:700;
+    opacity:0.85;
+  }
+  #title span{ display:block; font-family:'Rajdhani',sans-serif; font-weight:500;
+    font-size:11px; letter-spacing:0.2em; color:var(--amber); margin-top:4px; opacity:0.8; }
+  #status{
+    top:28px; right:32px; font-size:11px; text-align:right; opacity:0.75;
+  }
+  #hint{
+    bottom:30px; left:50%; transform:translateX(-50%);
+    font-size:12px; text-align:center; opacity:0.7; white-space:nowrap;
+  }
+  #metric{
+    bottom:30px; right:32px; font-size:11px; text-align:right; opacity:0.75;
+    line-height:1.6em;
+  }
+
+  .bracket{
+    position:absolute; width:34px; height:34px; opacity:0.7;
+    border:2px solid var(--cyan);
+  }
+  #b-tl{ top:16px; left:16px; border-right:none; border-bottom:none; }
+  #b-tr{ top:16px; right:16px; border-left:none; border-bottom:none; }
+  #b-bl{ bottom:16px; left:16px; border-right:none; border-top:none; }
+  #b-br{ bottom:16px; right:16px; border-left:none; border-top:none; }
+
+  /* Mode / toolbar UI */
+  #toolbar{
+    position:absolute; top:28px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px;
+    pointer-events:auto;
+    background:rgba(6,12,20,0.45);
+    border:1px solid rgba(91,227,255,0.35);
+    padding:8px 12px; border-radius:3px;
+    backdrop-filter: blur(4px);
+  }
+  .modeBtn{
+    font-family:'Orbitron',sans-serif; font-size:10.5px; letter-spacing:0.1em;
+    background:transparent; color:rgba(91,227,255,0.6);
+    border:1px solid rgba(91,227,255,0.35); padding:8px 14px; border-radius:2px;
+    cursor:pointer; transition: all 0.2s ease;
+  }
+  .modeBtn.active{
+    color:var(--ink); background:var(--cyan);
+    box-shadow:0 0 16px rgba(91,227,255,0.7);
+    border-color:var(--cyan);
+  }
+  .modeBtn:hover{ border-color:var(--cyan); color:var(--cyan); }
+
+  #clearBtn{
+    font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:0.1em;
+    background:transparent; color:rgba(255,79,163,0.75);
+    border:1px solid rgba(255,79,163,0.4); padding:8px 12px; border-radius:2px;
+    cursor:pointer; margin-left:4px;
+  }
+  #clearBtn:hover{ background:rgba(255,79,163,0.12); }
+
+  #colorDots{
+    display:flex; gap:8px; margin-left:6px; pointer-events:auto;
+  }
+  .dot{
+    width:18px; height:18px; border-radius:50%; cursor:pointer;
+    border:2px solid rgba(255,255,255,0.25);
+    box-shadow:0 0 8px currentColor;
+  }
+  .dot.active{ border-color:#fff; transform:scale(1.15); }
+
+  #permOverlay{
+    position:fixed; inset:0; background:var(--ink); color:var(--cyan);
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; z-index:20; font-family:'Rajdhani',sans-serif; padding:24px;
+  }
+  #permOverlay h1{
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:18px;
+    letter-spacing:0.1em; color:var(--cyan); text-shadow:0 0 10px rgba(91,227,255,0.5);
+    margin-bottom:14px;
+  }
+  #permOverlay p{ font-size:15px; opacity:0.8; max-width:420px; line-height:1.5em; margin:6px 0; }
+  #permOverlay button{
+    margin-top:22px; background:transparent; color:var(--cyan);
+    border:1px solid var(--cyan); padding:12px 26px; font-family:'Orbitron',sans-serif;
+    font-size:12px; letter-spacing:0.1em; border-radius:2px; cursor:pointer;
+    box-shadow: 0 0 14px rgba(91,227,255,0.25) inset;
+  }
+  #permOverlay button:hover{ background:rgba(91,227,255,0.1); }
+  #permOverlay.hidden{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="trail"></canvas>
+  <canvas id="fx"></canvas>
+  <div id="vignette"></div>
+
+  <div class="bracket" id="b-tl"></div>
+  <div class="bracket" id="b-tr"></div>
+  <div class="bracket" id="b-bl"></div>
+  <div class="bracket" id="b-br"></div>
+
+  <div class="hud" id="title">GESTURE&nbsp;BLOOM<span>HOLOGRAPHIC FLORA INTERFACE</span></div>
+  <div class="hud" id="status">TRACKING: <span id="statusText">INITIALIZING</span></div>
+  <div class="hud" id="hint">PINCH THUMB + INDEX TO RESIZE &nbsp;•&nbsp; MOVE HAND TO POSITION THE BLOOM</div>
+  <div class="hud" id="metric">SCALE <span id="scaleVal">--</span><br>BLOOM ENERGY <span id="energyVal">--</span></div>
+
+  <div id="toolbar">
+    <button class="modeBtn active" id="modeBloomBtn">◈ BLOOM</button>
+    <button class="modeBtn" id="modeDrawBtn">✎ DRAW</button>
+    <div id="colorDots">
+      <div class="dot active" data-color="#5be3ff" style="background:#5be3ff;color:#5be3ff;"></div>
+      <div class="dot" data-color="#ffb454" style="background:#ffb454;color:#ffb454;"></div>
+      <div class="dot" data-color="#ff4fa3" style="background:#ff4fa3;color:#ff4fa3;"></div>
+      <div class="dot" data-color="#ffffff" style="background:#ffffff;color:#ffffff;"></div>
+    </div>
+    <button id="clearBtn">CLEAR</button>
+  </div>
+</div>
+
+<div id="permOverlay">
+  <h1>◈ CAMERA ACCESS REQUIRED ◈</h1>
+  <p>This interface projects a holographic flower onto your live camera feed, controlled entirely by hand gestures. Switch to Draw mode to paint glowing strokes in mid-air.</p>
+  <p>Grant camera access to begin. If nothing happens after allowing, open this file directly in your browser (not inside an embedded preview) — camera access needs a full page context.</p>
+  <button id="startBtn">ACTIVATE CAMERA</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+const video = document.getElementById('cam');
+const trailCanvas = document.getElementById('trail');
+const trailCtx = trailCanvas.getContext('2d');
+const canvas = document.getElementById('fx');
+const ctx = canvas.getContext('2d');
+const statusText = document.getElementById('statusText');
+const scaleVal = document.getElementById('scaleVal');
+const energyVal = document.getElementById('energyVal');
+const permOverlay = document.getElementById('permOverlay');
+const startBtn = document.getElementById('startBtn');
+const hint = document.getElementById('hint');
+const modeBloomBtn = document.getElementById('modeBloomBtn');
+const modeDrawBtn = document.getElementById('modeDrawBtn');
+const clearBtn = document.getElementById('clearBtn');
+const colorDots = document.querySelectorAll('.dot');
+
+function resize(){
+  [canvas, trailCanvas].forEach(c => {
+    c.width = window.innerWidth;
+    c.height = window.innerHeight;
+  });
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- Mode + shared state ----------
+let mode = 'bloom'; // 'bloom' | 'draw'
+let drawColor = '#5be3ff';
+
+modeBloomBtn.addEventListener('click', () => setMode('bloom'));
+modeDrawBtn.addEventListener('click', () => setMode('draw'));
+colorDots.forEach(dot => {
+  dot.addEventListener('click', () => {
+    colorDots.forEach(d => d.classList.remove('active'));
+    dot.classList.add('active');
+    drawColor = dot.dataset.color;
+  });
+});
+clearBtn.addEventListener('click', () => {
+  trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+});
+
+function setMode(m){
+  mode = m;
+  modeBloomBtn.classList.toggle('active', m==='bloom');
+  modeDrawBtn.classList.toggle('active', m==='draw');
+  hint.textContent = m==='bloom'
+    ? 'PINCH THUMB + INDEX TO RESIZE  •  MOVE HAND TO POSITION THE BLOOM'
+    : 'PINCH TO DRAW  •  RELEASE TO LIFT THE PEN  •  MOVE FREELY TO REPOSITION';
+  penDown = false;
+  penPrev = null;
+}
+
+// ---------- Smoothed bloom state ----------
+let smoothX = null, smoothY = null;
+let smoothScale = 0.0;
+let targetScale = 0.0;
+let handPresent = false;
+let presenceFade = 0;
+let t = 0;
+
+const MIN_PINCH = 0.03;
+const MAX_PINCH = 0.25;
+
+// ---------- Draw-mode state ----------
+let cursorX = null, cursorY = null;
+let penDown = false;
+let penPrev = null;
+const PEN_DOWN_DIST = 0.045;
+const PEN_UP_DIST = 0.075;
+
+function lerp(a,b,f){ return a + (b-a)*f; }
+
+// ---------- Draw the glowing flower ----------
+function drawFlower(cx, cy, scale, energy){
+  const baseR = Math.min(canvas.width, canvas.height) * 0.16 * (0.35 + scale*1.0);
+  const petals = 8;
+  const rotation = t * 0.15;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const ringR = baseR * 1.9;
+  const ringGrad = ctx.createRadialGradient(0,0, ringR*0.7, 0,0, ringR);
+  ringGrad.addColorStop(0, 'rgba(91,227,255,0)');
+  ringGrad.addColorStop(0.85, `rgba(91,227,255,${0.10+energy*0.12})`);
+  ringGrad.addColorStop(1, 'rgba(91,227,255,0)');
+  ctx.fillStyle = ringGrad;
+  ctx.beginPath();
+  ctx.arc(0,0, ringR, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const particleCount = 14;
+  for(let i=0;i<particleCount;i++){
+    const a = rotation*1.6 + (i/particleCount)*Math.PI*2;
+    const r = baseR * (1.55 + 0.08*Math.sin(t*1.4 + i));
+    const px = Math.cos(a)*r, py = Math.sin(a)*r;
+    const sparkR = 1.6 + 1.4*Math.sin(t*3 + i);
+    const g = ctx.createRadialGradient(px,py,0,px,py,sparkR*4);
+    g.addColorStop(0, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.3, 'rgba(91,227,255,0.6)');
+    g.addColorStop(1, 'rgba(91,227,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(px,py, sparkR*4, 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  for(let layer=0; layer<2; layer++){
+    const layerScale = layer===0 ? 1.0 : 0.62;
+    const layerRot = rotation * (layer===0?1:-1.3) + (layer*Math.PI/petals);
+    const layerAlpha = layer===0 ? 0.95 : 0.85;
+
+    ctx.save();
+    ctx.rotate(layerRot);
+    ctx.globalCompositeOperation = 'lighter';
+
+    for(let i=0;i<petals;i++){
+      ctx.save();
+      ctx.rotate((i/petals)*Math.PI*2);
+      const pr = baseR*layerScale;
+      const pw = pr*0.5;
+
+      const grad = ctx.createLinearGradient(0,0,0,-pr);
+      grad.addColorStop(0, `rgba(255,180,84,${0.05})`);
+      grad.addColorStop(0.45, `rgba(91,227,255,${0.55*layerAlpha})`);
+      grad.addColorStop(0.85, `rgba(255,79,163,${0.55*layerAlpha})`);
+      grad.addColorStop(1, `rgba(255,255,255,${0.9*layerAlpha})`);
+
+      ctx.beginPath();
+      ctx.moveTo(0,0);
+      ctx.quadraticCurveTo(pw, -pr*0.55, 0, -pr);
+      ctx.quadraticCurveTo(-pw, -pr*0.55, 0, 0);
+      ctx.closePath();
+
+      ctx.fillStyle = grad;
+      ctx.shadowColor = 'rgba(91,227,255,0.9)';
+      ctx.shadowBlur = 22 + energy*20;
+      ctx.fill();
+
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const coreR = baseR*0.28;
+  const coreGrad = ctx.createRadialGradient(0,0,0,0,0,coreR*2.6);
+  coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
+  coreGrad.addColorStop(0.25, 'rgba(255,210,140,0.95)');
+  coreGrad.addColorStop(0.6, 'rgba(255,79,163,0.35)');
+  coreGrad.addColorStop(1, 'rgba(255,79,163,0)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(0,0,coreR*2.6,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// ---------- Draw-mode: persistent glowing ink stroke ----------
+function hexToRgb(hex){
+  const v = parseInt(hex.slice(1),16);
+  return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 };
+}
+
+function drawStroke(x1,y1,x2,y2,color){
+  const {r,g,b} = hexToRgb(color);
+  trailCtx.save();
+  trailCtx.globalCompositeOperation = 'lighter';
+  trailCtx.lineCap = 'round';
+  trailCtx.lineJoin = 'round';
+
+  // soft outer glow pass
+  trailCtx.strokeStyle = `rgba(${r},${g},${b},0.25)`;
+  trailCtx.lineWidth = 16;
+  trailCtx.shadowColor = color;
+  trailCtx.shadowBlur = 26;
+  trailCtx.beginPath();
+  trailCtx.moveTo(x1,y1);
+  trailCtx.lineTo(x2,y2);
+  trailCtx.stroke();
+
+  // bright core pass
+  trailCtx.strokeStyle = `rgba(255,255,255,0.85)`;
+  trailCtx.lineWidth = 3;
+  trailCtx.shadowBlur = 12;
+  trailCtx.beginPath();
+  trailCtx.moveTo(x1,y1);
+  trailCtx.lineTo(x2,y2);
+  trailCtx.stroke();
+
+  trailCtx.restore();
+}
+
+function drawCursor(x,y,down,color){
+  const {r,g,b} = hexToRgb(color);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const R = down ? 10 : 7;
+  const grad = ctx.createRadialGradient(x,y,0,x,y,R*3);
+  grad.addColorStop(0, down ? 'rgba(255,255,255,0.95)' : `rgba(${r},${g},${b},0.8)`);
+  grad.addColorStop(0.4, `rgba(${r},${g},${b},${down?0.55:0.35})`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x,y,R*3,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function render(){
+  t += 0.016;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(mode === 'bloom'){
+    presenceFade = lerp(presenceFade, handPresent?1:0, 0.08);
+    smoothScale = lerp(smoothScale, targetScale, 0.12);
+
+    if(smoothX !== null && presenceFade > 0.01){
+      ctx.save();
+      ctx.globalAlpha = presenceFade;
+      drawFlower(smoothX, smoothY, smoothScale, smoothScale);
+      ctx.restore();
+    }
+    scaleVal.textContent = (0.4 + smoothScale*1.0).toFixed(2) + 'x';
+    energyVal.textContent = Math.round(smoothScale*100) + '%';
+  } else {
+    if(cursorX !== null){
+      drawCursor(cursorX, cursorY, penDown, drawColor);
+    }
+    scaleVal.textContent = penDown ? 'DOWN' : 'UP';
+    energyVal.textContent = handPresent ? 'LIVE' : 'IDLE';
+  }
+
+  requestAnimationFrame(render);
+}
+render();
+
+// ---------- MediaPipe Hands setup ----------
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+hands.setOptions({
+  maxNumHands: 1,
+  modelComplexity: 1,
+  selfieMode: true,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults((results) => {
+  if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+    handPresent = true;
+    statusText.textContent = 'HAND LOCKED';
+    const lm = results.multiHandLandmarks[0];
+    const thumb = lm[4];
+    const index = lm[8];
+
+    const dx = thumb.x - index.x, dy = thumb.y - index.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+
+    if(mode === 'bloom'){
+      const midX = (thumb.x + index.x)/2 * canvas.width;
+      const midY = (thumb.y + index.y)/2 * canvas.height;
+
+      smoothX = (smoothX===null) ? midX : lerp(smoothX, midX, 0.22);
+      smoothY = (smoothY===null) ? midY : lerp(smoothY, midY, 0.22);
+
+      let norm = (dist - MIN_PINCH) / (MAX_PINCH - MIN_PINCH);
+      norm = Math.max(0, Math.min(1, norm));
+      targetScale = norm;
+
+    } else {
+      // DRAW MODE: track index fingertip, pinch = pen down (hysteresis)
+      const ix = index.x * canvas.width;
+      const iy = index.y * canvas.height;
+      cursorX = (cursorX===null) ? ix : lerp(cursorX, ix, 0.35);
+      cursorY = (cursorY===null) ? iy : lerp(cursorY, iy, 0.35);
+
+      if(!penDown && dist < PEN_DOWN_DIST){
+        penDown = true;
+        penPrev = { x:cursorX, y:cursorY };
+      } else if(penDown && dist > PEN_UP_DIST){
+        penDown = false;
+        penPrev = null;
+      }
+
+      if(penDown){
+        if(penPrev){
+          drawStroke(penPrev.x, penPrev.y, cursorX, cursorY, drawColor);
+        }
+        penPrev = { x:cursorX, y:cursorY };
+      }
+    }
+
+  } else {
+    handPresent = false;
+    statusText.textContent = 'SEARCHING...';
+    if(mode === 'draw'){ penDown = false; penPrev = null; }
+  }
+});
+
+let mpCamera = null;
+
+async function startCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 1280, height: 720 },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    permOverlay.classList.add('hidden');
+    statusText.textContent = 'SEARCHING...';
+
+    mpCamera = new Camera(video, {
+      onFrame: async () => { await hands.send({image: video}); },
+      width: 1280,
+      height: 720
+    });
+    mpCamera.start();
+
+  } catch(err){
+    statusText.textContent = 'NO CAMERA';
+    const p = document.createElement('p');
+    p.style.color = '#ff4fa3';
+    p.textContent = 'Camera error: ' + err.message;
+    permOverlay.appendChild(p);
+    permOverlay.classList.remove('hidden');
+  }
+}
+
+startBtn.addEventListener('click', startCamera);
+</script>
+</body>
+</html>
