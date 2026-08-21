@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>GESTURE BLOOM // Holographic Flower Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan: #5be3ff;
+    --cyan-dim: #2a7f96;
+    --amber: #ffb454;
+    --magenta: #ff4fa3;
+    --ink: #04070c;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--ink); overflow:hidden;
+    font-family:'Rajdhani',sans-serif;
+  }
+  #stage{ position:fixed; inset:0; width:100vw; height:100vh; }
+  video, canvas{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  video{
+    transform: scaleX(-1);
+    filter: saturate(0.65) brightness(0.55) contrast(1.05);
+  }
+  canvas{ pointer-events:none; }
+
+  #vignette{
+    position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(ellipse at center, rgba(4,7,12,0) 45%, rgba(4,7,12,0.75) 100%);
+  }
+
+  .hud{
+    position:absolute; pointer-events:none;
+    color:var(--cyan); font-family:'Orbitron',sans-serif;
+    text-shadow: 0 0 8px rgba(91,227,255,0.6);
+    letter-spacing: 0.12em;
+  }
+  #title{ top:28px; left:32px; font-size:14px; font-weight:700; opacity:0.85; }
+  #title span{ display:block; font-family:'Rajdhani',sans-serif; font-weight:500;
+    font-size:11px; letter-spacing:0.2em; color:var(--amber); margin-top:4px; opacity:0.8; }
+  #status{ top:28px; right:32px; font-size:11px; text-align:right; opacity:0.75; }
+  #hint{ bottom:30px; left:50%; transform:translateX(-50%); font-size:12px; text-align:center; opacity:0.7; white-space:nowrap; }
+  #metric{ bottom:30px; right:32px; font-size:11px; text-align:right; opacity:0.75; line-height:1.6em; }
+
+  .bracket{ position:absolute; width:34px; height:34px; opacity:0.7; border:2px solid var(--cyan); }
+  #b-tl{ top:16px; left:16px; border-right:none; border-bottom:none; }
+  #b-tr{ top:16px; right:16px; border-left:none; border-bottom:none; }
+  #b-bl{ bottom:16px; left:16px; border-right:none; border-top:none; }
+  #b-br{ bottom:16px; right:16px; border-left:none; border-top:none; }
+
+  #toolbarWrap{
+    position:absolute; top:28px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    pointer-events:none;
+  }
+  .toolbar{
+    display:flex; align-items:center; gap:8px; pointer-events:auto;
+    background:rgba(6,12,20,0.45); border:1px solid rgba(91,227,255,0.35);
+    padding:7px 10px; border-radius:3px; backdrop-filter: blur(4px);
+  }
+  .btn{
+    font-family:'Orbitron',sans-serif; font-size:10.5px; letter-spacing:0.08em;
+    background:transparent; color:rgba(91,227,255,0.65);
+    border:1px solid rgba(91,227,255,0.35); padding:7px 12px; border-radius:2px;
+    cursor:pointer; transition: all 0.2s ease; white-space:nowrap;
+  }
+  .btn.active{ color:var(--ink); background:var(--cyan); box-shadow:0 0 16px rgba(91,227,255,0.7); border-color:var(--cyan); }
+  .btn:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .btn.danger{ color:rgba(255,79,163,0.8); border-color:rgba(255,79,163,0.4); }
+  .btn.danger:hover{ background:rgba(255,79,163,0.12); }
+
+  #colorDots{ display:flex; gap:7px; pointer-events:auto; margin-right:2px; }
+  .dot{ width:17px; height:17px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,0.25); box-shadow:0 0 8px currentColor; }
+  .dot.active{ border-color:#fff; transform:scale(1.15); }
+
+  .hidden-row{ display:none !important; }
+
+  #permOverlay{
+    position:fixed; inset:0; background:var(--ink); color:var(--cyan);
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; z-index:20; font-family:'Rajdhani',sans-serif; padding:24px;
+  }
+  #permOverlay h1{
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:18px;
+    letter-spacing:0.1em; color:var(--cyan); text-shadow:0 0 10px rgba(91,227,255,0.5); margin-bottom:14px;
+  }
+  #permOverlay p{ font-size:15px; opacity:0.8; max-width:440px; line-height:1.5em; margin:6px 0; }
+  #permOverlay button{
+    margin-top:22px; background:transparent; color:var(--cyan);
+    border:1px solid var(--cyan); padding:12px 26px; font-family:'Orbitron',sans-serif;
+    font-size:12px; letter-spacing:0.1em; border-radius:2px; cursor:pointer;
+    box-shadow: 0 0 14px rgba(91,227,255,0.25) inset;
+  }
+  #permOverlay button:hover{ background:rgba(91,227,255,0.1); }
+  #permOverlay.hidden{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="trail"></canvas>
+  <canvas id="fx"></canvas>
+  <div id="vignette"></div>
+
+  <div class="bracket" id="b-tl"></div>
+  <div class="bracket" id="b-tr"></div>
+  <div class="bracket" id="b-bl"></div>
+  <div class="bracket" id="b-br"></div>
+
+  <div class="hud" id="title">GESTURE&nbsp;BLOOM<span>HOLOGRAPHIC FLORA INTERFACE</span></div>
+  <div class="hud" id="status">TRACKING: <span id="statusText">INITIALIZING</span></div>
+  <div class="hud" id="hint">PINCH THUMB + INDEX TO RESIZE &nbsp;•&nbsp; MOVE HAND TO POSITION THE BLOOM</div>
+  <div class="hud" id="metric">SCALE <span id="scaleVal">--</span><br>BLOOM ENERGY <span id="energyVal">--</span></div>
+
+  <div id="toolbarWrap">
+    <div class="toolbar" id="toolbarMain">
+      <button class="btn active" id="modeBloomBtn">◈ BLOOM</button>
+      <button class="btn" id="modeDrawBtn">✎ DRAW</button>
+      <button class="btn" id="snapBtn">◉ CAPTURE</button>
+      <button class="btn" id="muteBtn">♪ SOUND</button>
+    </div>
+    <div class="toolbar" id="toolbarBloom">
+      <button class="btn" id="speciesBtn">⬡ LOTUS ⟳</button>
+    </div>
+    <div class="toolbar hidden-row" id="toolbarDraw">
+      <div id="colorDots">
+        <div class="dot active" data-color="#5be3ff" style="background:#5be3ff;color:#5be3ff;"></div>
+        <div class="dot" data-color="#ffb454" style="background:#ffb454;color:#ffb454;"></div>
+        <div class="dot" data-color="#ff4fa3" style="background:#ff4fa3;color:#ff4fa3;"></div>
+        <div class="dot" data-color="#ffffff" style="background:#ffffff;color:#ffffff;"></div>
+      </div>
+      <button class="btn" id="fadeBtn">FADE: OFF</button>
+      <button class="btn danger" id="clearBtn">CLEAR</button>
+    </div>
+  </div>
+</div>
+
+<div id="permOverlay">
+  <h1>◈ CAMERA ACCESS REQUIRED ◈</h1>
+  <p>Grow glowing holographic flowers with your hands, paint glowing strokes in mid-air, and summon a second bloom with your other hand. Sound and camera both need one tap to unlock.</p>
+  <p>If nothing happens after allowing, open this file directly in your browser (not inside an embedded preview) — camera access needs a full page context.</p>
+  <button id="startBtn">ACTIVATE CAMERA</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+const video = document.getElementById('cam');
+const trailCanvas = document.getElementById('trail');
+const trailCtx = trailCanvas.getContext('2d');
+const canvas = document.getElementById('fx');
+const ctx = canvas.getContext('2d');
+const statusText = document.getElementById('statusText');
+const scaleVal = document.getElementById('scaleVal');
+const energyVal = document.getElementById('energyVal');
+const permOverlay = document.getElementById('permOverlay');
+const startBtn = document.getElementById('startBtn');
+const hint = document.getElementById('hint');
+const modeBloomBtn = document.getElementById('modeBloomBtn');
+const modeDrawBtn = document.getElementById('modeDrawBtn');
+const clearBtn = document.getElementById('clearBtn');
+const fadeBtn = document.getElementById('fadeBtn');
+const speciesBtn = document.getElementById('speciesBtn');
+const snapBtn = document.getElementById('snapBtn');
+const muteBtn = document.getElementById('muteBtn');
+const colorDots = document.querySelectorAll('.dot');
+const toolbarBloom = document.getElementById('toolbarBloom');
+const toolbarDraw = document.getElementById('toolbarDraw');
+
+function resize(){
+  [canvas, trailCanvas].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; });
+}
+window.addEventListener('resize', resize);
+resize();
+
+function lerp(a,b,f){ return a + (b-a)*f; }
+function hexToRgb(hex){ const v = parseInt(hex.slice(1),16); return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 }; }
+
+// ---------- Mode + shared state ----------
+let mode = 'bloom';
+let drawColor = '#5be3ff';
+let fadeInk = false;
+
+const SPECIES = ['LOTUS','IONBLADE','STARBURST'];
+let speciesIndex = 0;
+
+modeBloomBtn.addEventListener('click', () => setMode('bloom'));
+modeDrawBtn.addEventListener('click', () => setMode('draw'));
+colorDots.forEach(dot => {
+  dot.addEventListener('click', () => {
+    colorDots.forEach(d => d.classList.remove('active'));
+    dot.classList.add('active');
+    drawColor = dot.dataset.color;
+  });
+});
+clearBtn.addEventListener('click', () => trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height));
+fadeBtn.addEventListener('click', () => {
+  fadeInk = !fadeInk;
+  fadeBtn.textContent = 'FADE: ' + (fadeInk ? 'ON' : 'OFF');
+  fadeBtn.classList.toggle('active', fadeInk);
+});
+speciesBtn.addEventListener('click', cycleSpecies);
+function cycleSpecies(){
+  speciesIndex = (speciesIndex + 1) % SPECIES.length;
+  speciesBtn.textContent = '⬡ ' + SPECIES[speciesIndex] + ' ⟳';
+}
+snapBtn.addEventListener('click', takeSnapshot);
+muteBtn.addEventListener('click', toggleMute);
+
+function setMode(m){
+  mode = m;
+  modeBloomBtn.classList.toggle('active', m==='bloom');
+  modeDrawBtn.classList.toggle('active', m==='draw');
+  toolbarBloom.classList.toggle('hidden-row', m!=='bloom');
+  toolbarDraw.classList.toggle('hidden-row', m!=='draw');
+  hint.textContent = m==='bloom'
+    ? 'PINCH TO RESIZE  •  MOVE HAND TO POSITION  •  USE BOTH HANDS FOR A DUAL BLOOM'
+    : 'PINCH TO DRAW  •  RELEASE TO LIFT THE PEN  •  MOVE FREELY TO REPOSITION';
+  penDown = false; penPrev = null;
+}
+
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if(k==='b') setMode('bloom');
+  else if(k==='d') setMode('draw');
+  else if(k==='c') trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+  else if(k==='s') takeSnapshot();
+  else if(k==='m') toggleMute();
+  else if(k==='f') cycleSpecies();
+});
+
+// ---------- Bloom state (up to 2 hands) ----------
+function newBloomSlot(){ return { active:false, x:null, y:null, scale:0, target:0, presence:0 }; }
+let blooms = [ newBloomSlot(), newBloomSlot() ];
+let handPresent = false;
+let idleTimer = 0;
+let t = 0;
+
+const MIN_PINCH = 0.03;
+const MAX_PINCH = 0.25;
+
+// ---------- Draw-mode state ----------
+let cursorX = null, cursorY = null;
+let penDown = false;
+let penPrev = null;
+const PEN_DOWN_DIST = 0.045;
+const PEN_UP_DIST = 0.075;
+
+// ---------- Audio ----------
+let audioCtx=null, osc=null, gainNode=null, filterNode=null, muted=false, audioReady=false;
+function initAudio(){
+  try{
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    filterNode = audioCtx.createBiquadFilter();
+    filterNode.type = 'lowpass';
+    filterNode.frequency.value = 900;
+    gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0;
+    osc.connect(filterNode);
+    filterNode.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start();
+    audioReady = true;
+  } catch(e){ audioReady = false; }
+}
+function toggleMute(){
+  muted = !muted;
+  muteBtn.textContent = muted ? '✕ SOUND' : '♪ SOUND';
+  muteBtn.classList.toggle('active', !muted);
+}
+function updateAudio(freq, gainTarget){
+  if(!audioReady) return;
+  const g = muted ? 0 : gainTarget;
+  osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.08);
+  gainNode.gain.setTargetAtTime(g, audioCtx.currentTime, 0.15);
+}
+
+// ---------- Snapshot ----------
+function flashEffect(){
+  const f = document.createElement('div');
+  f.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0.85;z-index:30;pointer-events:none;transition:opacity 0.4s ease;';
+  document.body.appendChild(f);
+  requestAnimationFrame(() => { f.style.opacity = '0'; });
+  setTimeout(() => f.remove(), 450);
+}
+function takeSnapshot(){
+  const out = document.createElement('canvas');
+  out.width = canvas.width; out.height = canvas.height;
+  const octx = out.getContext('2d');
+  octx.save();
+  octx.translate(out.width, 0);
+  octx.scale(-1, 1);
+  octx.filter = 'saturate(0.65) brightness(0.55) contrast(1.05)';
+  try{ octx.drawImage(video, 0, 0, out.width, out.height); } catch(e){}
+  octx.restore();
+  octx.globalCompositeOperation = 'lighter';
+  octx.drawImage(trailCanvas, 0, 0);
+  octx.drawImage(canvas, 0, 0);
+  out.toBlob((blob) => {
+    if(!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'gesture-bloom-capture.png';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  flashEffect();
+}
+
+// ---------- Petal path per species ----------
+function petalPath(pr, pw, species){
+  ctx.beginPath();
+  if(species === 0){ // LOTUS - rounded
+    ctx.moveTo(0,0);
+    ctx.quadraticCurveTo(pw, -pr*0.55, 0, -pr);
+    ctx.quadraticCurveTo(-pw, -pr*0.55, 0, 0);
+  } else if(species === 1){ // IONBLADE - sharp diamond
+    ctx.moveTo(0,0);
+    ctx.lineTo(pw, -pr*0.5);
+    ctx.lineTo(0, -pr);
+    ctx.lineTo(-pw, -pr*0.5);
+  } else { // STARBURST - thin spike
+    ctx.moveTo(0,0);
+    ctx.lineTo(pw*0.5, -pr*0.85);
+    ctx.lineTo(0, -pr);
+    ctx.lineTo(-pw*0.5, -pr*0.85);
+  }
+  ctx.closePath();
+}
+
+function drawFlower(cx, cy, scale, energy, species){
+  const petalCounts = [8, 6, 14];
+  const pwRatios = [0.5, 0.26, 0.14];
+  const petals = petalCounts[species];
+  const pwRatio = pwRatios[species];
+  const baseR = Math.min(canvas.width, canvas.height) * 0.16 * (0.35 + scale*1.0);
+  const rotation = t * (species===2 ? 0.28 : 0.15);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const ringR = baseR * 1.9;
+  const ringGrad = ctx.createRadialGradient(0,0, ringR*0.7, 0,0, ringR);
+  ringGrad.addColorStop(0, 'rgba(91,227,255,0)');
+  ringGrad.addColorStop(0.85, `rgba(91,227,255,${0.10+energy*0.12})`);
+  ringGrad.addColorStop(1, 'rgba(91,227,255,0)');
+  ctx.fillStyle = ringGrad;
+  ctx.beginPath(); ctx.arc(0,0, ringR, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const particleCount = species===2 ? 20 : 14;
+  for(let i=0;i<particleCount;i++){
+    const a = rotation*1.6 + (i/particleCount)*Math.PI*2;
+    const r = baseR * (1.55 + 0.08*Math.sin(t*1.4 + i));
+    const px = Math.cos(a)*r, py = Math.sin(a)*r;
+    const sparkR = 1.6 + 1.4*Math.sin(t*3 + i);
+    const g = ctx.createRadialGradient(px,py,0,px,py,sparkR*4);
+    g.addColorStop(0, 'rgba(255,255,255,0.9)');
+    g.addColorStop(0.3, 'rgba(91,227,255,0.6)');
+    g.addColorStop(1, 'rgba(91,227,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(px,py, sparkR*4, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  for(let layer=0; layer<2; layer++){
+    const layerScale = layer===0 ? 1.0 : 0.62;
+    const layerRot = rotation * (layer===0?1:-1.3) + (layer*Math.PI/petals);
+    const layerAlpha = layer===0 ? 0.95 : 0.85;
+
+    ctx.save();
+    ctx.rotate(layerRot);
+    ctx.globalCompositeOperation = 'lighter';
+
+    for(let i=0;i<petals;i++){
+      ctx.save();
+      ctx.rotate((i/petals)*Math.PI*2);
+      const pr = baseR*layerScale;
+      const pw = pr*pwRatio;
+
+      const grad = ctx.createLinearGradient(0,0,0,-pr);
+      if(species===1){
+        grad.addColorStop(0, `rgba(255,79,163,${0.05})`);
+        grad.addColorStop(0.45, `rgba(255,79,163,${0.55*layerAlpha})`);
+        grad.addColorStop(0.85, `rgba(91,227,255,${0.55*layerAlpha})`);
+        grad.addColorStop(1, `rgba(255,255,255,${0.9*layerAlpha})`);
+      } else if(species===2){
+        grad.addColorStop(0, `rgba(255,255,255,${0.05})`);
+        grad.addColorStop(0.5, `rgba(91,227,255,${0.6*layerAlpha})`);
+        grad.addColorStop(1, `rgba(255,255,255,${0.95*layerAlpha})`);
+      } else {
+        grad.addColorStop(0, `rgba(255,180,84,${0.05})`);
+        grad.addColorStop(0.45, `rgba(91,227,255,${0.55*layerAlpha})`);
+        grad.addColorStop(0.85, `rgba(255,79,163,${0.55*layerAlpha})`);
+        grad.addColorStop(1, `rgba(255,255,255,${0.9*layerAlpha})`);
+      }
+
+      petalPath(pr, pw, species);
+      ctx.fillStyle = grad;
+      ctx.shadowColor = 'rgba(91,227,255,0.9)';
+      ctx.shadowBlur = 22 + energy*20;
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const coreR = baseR*0.28;
+  const coreGrad = ctx.createRadialGradient(0,0,0,0,0,coreR*2.6);
+  coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
+  coreGrad.addColorStop(0.25, 'rgba(255,210,140,0.95)');
+  coreGrad.addColorStop(0.6, 'rgba(255,79,163,0.35)');
+  coreGrad.addColorStop(1, 'rgba(255,79,163,0)');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath(); ctx.arc(0,0,coreR*2.6,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawEnergyArc(x1,y1,x2,y2){
+  const segments = 12;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(180,240,255,0.55)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#5be3ff';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  for(let i=0;i<=segments;i++){
+    const f = i/segments;
+    const bx = lerp(x1,x2,f), by = lerp(y1,y2,f);
+    const perp = Math.atan2(y2-y1, x2-x1) + Math.PI/2;
+    const taper = Math.sin(f*Math.PI);
+    const wobble = Math.sin(t*9 + i*1.8) * 9 * taper;
+    const ox = bx + Math.cos(perp)*wobble;
+    const oy = by + Math.sin(perp)*wobble;
+    if(i===0) ctx.moveTo(ox,oy); else ctx.lineTo(ox,oy);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawIdleStandby(){
+  const cx = canvas.width/2, cy = canvas.height/2;
+  const pulse = 0.5 + 0.5*Math.sin(t*1.2);
+  const r = 40 + pulse*14;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const grad = ctx.createRadialGradient(cx,cy,0,cx,cy,r*2.2);
+  grad.addColorStop(0, `rgba(91,227,255,${0.10+pulse*0.08})`);
+  grad.addColorStop(1, 'rgba(91,227,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(cx,cy,r*2.2,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = `rgba(91,227,255,${0.25+pulse*0.2})`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- Draw-mode ink ----------
+function drawStroke(x1,y1,x2,y2,color){
+  const {r,g,b} = hexToRgb(color);
+  trailCtx.save();
+  trailCtx.globalCompositeOperation = 'lighter';
+  trailCtx.lineCap = 'round';
+  trailCtx.lineJoin = 'round';
+
+  trailCtx.strokeStyle = `rgba(${r},${g},${b},0.25)`;
+  trailCtx.lineWidth = 16;
+  trailCtx.shadowColor = color;
+  trailCtx.shadowBlur = 26;
+  trailCtx.beginPath(); trailCtx.moveTo(x1,y1); trailCtx.lineTo(x2,y2); trailCtx.stroke();
+
+  trailCtx.strokeStyle = `rgba(255,255,255,0.85)`;
+  trailCtx.lineWidth = 3;
+  trailCtx.shadowBlur = 12;
+  trailCtx.beginPath(); trailCtx.moveTo(x1,y1); trailCtx.lineTo(x2,y2); trailCtx.stroke();
+
+  trailCtx.restore();
+}
+
+function drawCursor(x,y,down,color){
+  const {r,g,b} = hexToRgb(color);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const R = down ? 10 : 7;
+  const grad = ctx.createRadialGradient(x,y,0,x,y,R*3);
+  grad.addColorStop(0, down ? 'rgba(255,255,255,0.95)' : `rgba(${r},${g},${b},0.8)`);
+  grad.addColorStop(0.4, `rgba(${r},${g},${b},${down?0.55:0.35})`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x,y,R*3,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function render(){
+  t += 0.016;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(fadeInk && mode==='draw'){
+    trailCtx.save();
+    trailCtx.globalCompositeOperation = 'destination-out';
+    trailCtx.fillStyle = 'rgba(0,0,0,0.02)';
+    trailCtx.fillRect(0,0,trailCanvas.width, trailCanvas.height);
+    trailCtx.restore();
+  }
+
+  if(mode === 'bloom'){
+    let activeCount = 0;
+    blooms.forEach(b => {
+      b.presence = lerp(b.presence, b.active?1:0, 0.08);
+      b.scale = lerp(b.scale, b.target, 0.12);
+      if(b.x !== null && b.presence > 0.01){
+        ctx.save(); ctx.globalAlpha = b.presence;
+        drawFlower(b.x, b.y, b.scale, b.scale, speciesIndex);
+        ctx.restore();
+        activeCount++;
+      }
+    });
+
+    if(blooms[0].presence>0.3 && blooms[1].presence>0.3 && blooms[0].x!==null && blooms[1].x!==null){
+      const dx = blooms[0].x-blooms[1].x, dy = blooms[0].y-blooms[1].y;
+      const d = Math.sqrt(dx*dx+dy*dy);
+      if(d < Math.min(canvas.width,canvas.height)*0.55){
+        drawEnergyArc(blooms[0].x, blooms[0].y, blooms[1].x, blooms[1].y);
+      }
+    }
+
+    if(!handPresent){
+      idleTimer++;
+      if(idleTimer > 90) drawIdleStandby();
+    } else { idleTimer = 0; }
+
+    const topScale = Math.max(blooms[0].scale, blooms[1].scale);
+    scaleVal.textContent = (0.4 + topScale*1.0).toFixed(2) + 'x';
+    energyVal.textContent = activeCount>1 ? 'DUAL BLOOM' : Math.round(topScale*100) + '%';
+    updateAudio(180 + topScale*260, 0.02 + Math.max(blooms[0].presence,blooms[1].presence)*0.05);
+
+  } else {
+    if(cursorX !== null) drawCursor(cursorX, cursorY, penDown, drawColor);
+    scaleVal.textContent = penDown ? 'DOWN' : 'UP';
+    energyVal.textContent = handPresent ? 'LIVE' : 'IDLE';
+    updateAudio(penDown ? 340 : 210, penDown ? 0.06 : 0.015);
+  }
+
+  requestAnimationFrame(render);
+}
+render();
+
+// ---------- MediaPipe Hands setup ----------
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  selfieMode: true,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults((results) => {
+  const list = results.multiHandLandmarks || [];
+  handPresent = list.length > 0;
+  statusText.textContent = handPresent ? (list.length>1 ? 'DUAL HAND LOCK' : 'HAND LOCKED') : 'SEARCHING...';
+
+  if(mode === 'bloom'){
+    blooms[0].active = false; blooms[1].active = false;
+
+    const sorted = list.slice().sort((a,b) => a[8].x - b[8].x);
+    sorted.slice(0,2).forEach((lm, idx) => {
+      const thumb = lm[4], index = lm[8];
+      const dx = thumb.x-index.x, dy = thumb.y-index.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      const midX = (thumb.x+index.x)/2 * canvas.width;
+      const midY = (thumb.y+index.y)/2 * canvas.height;
+      const slot = blooms[idx];
+      slot.active = true;
+      slot.x = (slot.x===null) ? midX : lerp(slot.x, midX, 0.22);
+      slot.y = (slot.y===null) ? midY : lerp(slot.y, midY, 0.22);
+      let norm = (dist - MIN_PINCH) / (MAX_PINCH - MIN_PINCH);
+      slot.target = Math.max(0, Math.min(1, norm));
+    });
+
+  } else {
+    if(list.length > 0){
+      const lm = list[0];
+      const thumb = lm[4], index = lm[8];
+      const dx = thumb.x-index.x, dy = thumb.y-index.y;
+      const dist = Math.sqrt(dx*dx+dy*dy);
+      const ix = index.x * canvas.width, iy = index.y * canvas.height;
+      cursorX = (cursorX===null) ? ix : lerp(cursorX, ix, 0.35);
+      cursorY = (cursorY===null) ? iy : lerp(cursorY, iy, 0.35);
+
+      if(!penDown && dist < PEN_DOWN_DIST){ penDown = true; penPrev = { x:cursorX, y:cursorY }; }
+      else if(penDown && dist > PEN_UP_DIST){ penDown = false; penPrev = null; }
+
+      if(penDown){
+        if(penPrev) drawStroke(penPrev.x, penPrev.y, cursorX, cursorY, drawColor);
+        penPrev = { x:cursorX, y:cursorY };
+      }
+    } else {
+      penDown = false; penPrev = null;
+    }
+  }
+});
+
+let mpCamera = null;
+
+async function startCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 1280, height: 720 },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    permOverlay.classList.add('hidden');
+    statusText.textContent = 'SEARCHING...';
+    initAudio();
+
+    mpCamera = new Camera(video, {
+      onFrame: async () => { await hands.send({image: video}); },
+      width: 1280,
+      height: 720
+    });
+    mpCamera.start();
+
+  } catch(err){
+    statusText.textContent = 'NO CAMERA';
+    const p = document.createElement('p');
+    p.style.color = '#ff4fa3';
+    p.textContent = 'Camera error: ' + err.message;
+    permOverlay.appendChild(p);
+    permOverlay.classList.remove('hidden');
+  }
+}
+
+startBtn.addEventListener('click', startCamera);
+</script>
+</body>
+</html>
