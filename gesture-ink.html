@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>GESTURE INK // Holographic Draw Interface</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan: #5be3ff;
+    --cyan-dim: #2a7f96;
+    --amber: #ffb454;
+    --magenta: #ff4fa3;
+    --ink: #04070c;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--ink); overflow:hidden;
+    font-family:'Rajdhani',sans-serif;
+  }
+  #stage{ position:fixed; inset:0; width:100vw; height:100vh; }
+  video, canvas{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  }
+  video{
+    transform: scaleX(-1);
+    filter: saturate(0.65) brightness(0.55) contrast(1.05);
+  }
+  canvas{ pointer-events:none; }
+
+  #vignette{
+    position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(ellipse at center, rgba(4,7,12,0) 45%, rgba(4,7,12,0.75) 100%);
+  }
+
+  .hud{
+    position:absolute; pointer-events:none;
+    color:var(--cyan); font-family:'Orbitron',sans-serif;
+    text-shadow: 0 0 8px rgba(91,227,255,0.6);
+    letter-spacing: 0.12em;
+  }
+  #title{ top:28px; left:32px; font-size:14px; font-weight:700; opacity:0.85; }
+  #title span{ display:block; font-family:'Rajdhani',sans-serif; font-weight:500;
+    font-size:11px; letter-spacing:0.2em; color:var(--amber); margin-top:4px; opacity:0.8; }
+  #status{ top:28px; right:32px; font-size:11px; text-align:right; opacity:0.75; }
+  #hint{ bottom:30px; left:50%; transform:translateX(-50%); font-size:12px; text-align:center; opacity:0.7; white-space:nowrap; }
+  #metric{ bottom:30px; right:32px; font-size:11px; text-align:right; opacity:0.75; line-height:1.6em; }
+
+  .bracket{ position:absolute; width:34px; height:34px; opacity:0.7; border:2px solid var(--cyan); }
+  #b-tl{ top:16px; left:16px; border-right:none; border-bottom:none; }
+  #b-tr{ top:16px; right:16px; border-left:none; border-bottom:none; }
+  #b-bl{ bottom:16px; left:16px; border-right:none; border-top:none; }
+  #b-br{ bottom:16px; right:16px; border-left:none; border-top:none; }
+
+  #toolbarWrap{
+    position:absolute; top:28px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    pointer-events:none;
+  }
+  .toolbar{
+    display:flex; align-items:center; gap:8px; pointer-events:auto;
+    background:rgba(6,12,20,0.45); border:1px solid rgba(91,227,255,0.35);
+    padding:7px 10px; border-radius:3px; backdrop-filter: blur(4px);
+  }
+  .btn{
+    font-family:'Orbitron',sans-serif; font-size:10.5px; letter-spacing:0.08em;
+    background:transparent; color:rgba(91,227,255,0.65);
+    border:1px solid rgba(91,227,255,0.35); padding:7px 12px; border-radius:2px;
+    cursor:pointer; transition: all 0.2s ease; white-space:nowrap;
+  }
+  .btn.active{ color:var(--ink); background:var(--cyan); box-shadow:0 0 16px rgba(91,227,255,0.7); border-color:var(--cyan); }
+  .btn:hover{ border-color:var(--cyan); color:var(--cyan); }
+  .btn.danger{ color:rgba(255,79,163,0.8); border-color:rgba(255,79,163,0.4); }
+  .btn.danger:hover{ background:rgba(255,79,163,0.12); }
+
+  #colorDots{ display:flex; gap:7px; pointer-events:auto; margin-right:2px; }
+  .dot{ width:17px; height:17px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,0.25); box-shadow:0 0 8px currentColor; }
+  .dot.active{ border-color:#fff; transform:scale(1.15); }
+
+  #permOverlay{
+    position:fixed; inset:0; background:var(--ink); color:var(--cyan);
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    text-align:center; z-index:20; font-family:'Rajdhani',sans-serif; padding:24px;
+  }
+  #permOverlay h1{
+    font-family:'Orbitron',sans-serif; font-weight:700; font-size:18px;
+    letter-spacing:0.1em; color:var(--cyan); text-shadow:0 0 10px rgba(91,227,255,0.5); margin-bottom:14px;
+  }
+  #permOverlay p{ font-size:15px; opacity:0.8; max-width:440px; line-height:1.5em; margin:6px 0; }
+  #permOverlay button{
+    margin-top:22px; background:transparent; color:var(--cyan);
+    border:1px solid var(--cyan); padding:12px 26px; font-family:'Orbitron',sans-serif;
+    font-size:12px; letter-spacing:0.1em; border-radius:2px; cursor:pointer;
+    box-shadow: 0 0 14px rgba(91,227,255,0.25) inset;
+  }
+  #permOverlay button:hover{ background:rgba(91,227,255,0.1); }
+  #permOverlay.hidden{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="trail"></canvas>
+  <canvas id="fx"></canvas>
+  <div id="vignette"></div>
+
+  <div class="bracket" id="b-tl"></div>
+  <div class="bracket" id="b-tr"></div>
+  <div class="bracket" id="b-bl"></div>
+  <div class="bracket" id="b-br"></div>
+
+  <div class="hud" id="title">GESTURE&nbsp;INK<span>HOLOGRAPHIC DRAW INTERFACE</span></div>
+  <div class="hud" id="status">TRACKING: <span id="statusText">INITIALIZING</span></div>
+  <div class="hud" id="hint">PINCH TO DRAW &nbsp;•&nbsp; RELEASE TO LIFT THE PEN &nbsp;•&nbsp; MOVE FREELY TO REPOSITION</div>
+  <div class="hud" id="metric">PEN <span id="scaleVal">--</span><br>STATUS <span id="energyVal">--</span></div>
+
+  <div id="toolbarWrap">
+    <div class="toolbar" id="toolbarMain">
+      <button class="btn" id="snapBtn">◉ CAPTURE</button>
+      <button class="btn" id="muteBtn">♪ SOUND</button>
+    </div>
+    <div class="toolbar" id="toolbarDraw">
+      <div id="colorDots">
+        <div class="dot active" data-color="#5be3ff" style="background:#5be3ff;color:#5be3ff;"></div>
+        <div class="dot" data-color="#ffb454" style="background:#ffb454;color:#ffb454;"></div>
+        <div class="dot" data-color="#ff4fa3" style="background:#ff4fa3;color:#ff4fa3;"></div>
+        <div class="dot" data-color="#ffffff" style="background:#ffffff;color:#ffffff;"></div>
+      </div>
+      <button class="btn" id="fadeBtn">FADE: OFF</button>
+      <button class="btn danger" id="clearBtn">CLEAR</button>
+    </div>
+  </div>
+</div>
+
+<div id="permOverlay">
+  <h1>◈ CAMERA ACCESS REQUIRED ◈</h1>
+  <p>Pinch your thumb and index finger together to draw glowing strokes in mid-air. Sound and camera both need one tap to unlock.</p>
+  <p>If nothing happens after allowing, open this file directly in your browser (not inside an embedded preview) — camera access needs a full page context.</p>
+  <button id="startBtn">ACTIVATE CAMERA</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+<script>
+const video = document.getElementById('cam');
+const trailCanvas = document.getElementById('trail');
+const trailCtx = trailCanvas.getContext('2d');
+const canvas = document.getElementById('fx');
+const ctx = canvas.getContext('2d');
+const statusText = document.getElementById('statusText');
+const scaleVal = document.getElementById('scaleVal');
+const energyVal = document.getElementById('energyVal');
+const permOverlay = document.getElementById('permOverlay');
+const startBtn = document.getElementById('startBtn');
+const clearBtn = document.getElementById('clearBtn');
+const fadeBtn = document.getElementById('fadeBtn');
+const snapBtn = document.getElementById('snapBtn');
+const muteBtn = document.getElementById('muteBtn');
+const colorDots = document.querySelectorAll('.dot');
+
+function resize(){
+  [canvas, trailCanvas].forEach(c => { c.width = window.innerWidth; c.height = window.innerHeight; });
+}
+window.addEventListener('resize', resize);
+resize();
+
+function lerp(a,b,f){ return a + (b-a)*f; }
+function hexToRgb(hex){ const v = parseInt(hex.slice(1),16); return { r:(v>>16)&255, g:(v>>8)&255, b:v&255 }; }
+
+// ---------- Shared state ----------
+let drawColor = '#5be3ff';
+let fadeInk = false;
+let handPresent = false;
+let t = 0;
+
+colorDots.forEach(dot => {
+  dot.addEventListener('click', () => {
+    colorDots.forEach(d => d.classList.remove('active'));
+    dot.classList.add('active');
+    drawColor = dot.dataset.color;
+  });
+});
+clearBtn.addEventListener('click', () => trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height));
+fadeBtn.addEventListener('click', () => {
+  fadeInk = !fadeInk;
+  fadeBtn.textContent = 'FADE: ' + (fadeInk ? 'ON' : 'OFF');
+  fadeBtn.classList.toggle('active', fadeInk);
+});
+snapBtn.addEventListener('click', takeSnapshot);
+muteBtn.addEventListener('click', toggleMute);
+
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if(k==='c') trailCtx.clearRect(0,0,trailCanvas.width, trailCanvas.height);
+  else if(k==='s') takeSnapshot();
+  else if(k==='m') toggleMute();
+});
+
+// ---------- Draw-mode state ----------
+let cursorX = null, cursorY = null;
+let penDown = false;
+let penPrev = null;
+const PEN_DOWN_DIST = 0.045;
+const PEN_UP_DIST = 0.075;
+
+// ---------- Audio ----------
+let audioCtx=null, osc=null, gainNode=null, filterNode=null, muted=false, audioReady=false;
+function initAudio(){
+  try{
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    filterNode = audioCtx.createBiquadFilter();
+    filterNode.type = 'lowpass';
+    filterNode.frequency.value = 900;
+    gainNode = audioCtx.createGain();
+    gainNode.gain.value = 0;
+    osc.connect(filterNode);
+    filterNode.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start();
+    audioReady = true;
+  } catch(e){ audioReady = false; }
+}
+function toggleMute(){
+  muted = !muted;
+  muteBtn.textContent = muted ? '✕ SOUND' : '♪ SOUND';
+  muteBtn.classList.toggle('active', !muted);
+}
+function updateAudio(freq, gainTarget){
+  if(!audioReady) return;
+  const g = muted ? 0 : gainTarget;
+  osc.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.08);
+  gainNode.gain.setTargetAtTime(g, audioCtx.currentTime, 0.15);
+}
+
+// ---------- Snapshot ----------
+function flashEffect(){
+  const f = document.createElement('div');
+  f.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0.85;z-index:30;pointer-events:none;transition:opacity 0.4s ease;';
+  document.body.appendChild(f);
+  requestAnimationFrame(() => { f.style.opacity = '0'; });
+  setTimeout(() => f.remove(), 450);
+}
+function takeSnapshot(){
+  const out = document.createElement('canvas');
+  out.width = canvas.width; out.height = canvas.height;
+  const octx = out.getContext('2d');
+  octx.save();
+  octx.translate(out.width, 0);
+  octx.scale(-1, 1);
+  octx.filter = 'saturate(0.65) brightness(0.55) contrast(1.05)';
+  try{ octx.drawImage(video, 0, 0, out.width, out.height); } catch(e){}
+  octx.restore();
+  octx.globalCompositeOperation = 'lighter';
+  octx.drawImage(trailCanvas, 0, 0);
+  octx.drawImage(canvas, 0, 0);
+  out.toBlob((blob) => {
+    if(!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'gesture-ink-capture.png';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+  flashEffect();
+}
+
+// ---------- Draw-mode ink ----------
+function drawStroke(x1,y1,x2,y2,color){
+  const {r,g,b} = hexToRgb(color);
+  trailCtx.save();
+  trailCtx.globalCompositeOperation = 'lighter';
+  trailCtx.lineCap = 'round';
+  trailCtx.lineJoin = 'round';
+
+  trailCtx.strokeStyle = `rgba(${r},${g},${b},0.25)`;
+  trailCtx.lineWidth = 16;
+  trailCtx.shadowColor = color;
+  trailCtx.shadowBlur = 26;
+  trailCtx.beginPath(); trailCtx.moveTo(x1,y1); trailCtx.lineTo(x2,y2); trailCtx.stroke();
+
+  trailCtx.strokeStyle = `rgba(255,255,255,0.85)`;
+  trailCtx.lineWidth = 3;
+  trailCtx.shadowBlur = 12;
+  trailCtx.beginPath(); trailCtx.moveTo(x1,y1); trailCtx.lineTo(x2,y2); trailCtx.stroke();
+
+  trailCtx.restore();
+}
+
+function drawCursor(x,y,down,color){
+  const {r,g,b} = hexToRgb(color);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const R = down ? 10 : 7;
+  const grad = ctx.createRadialGradient(x,y,0,x,y,R*3);
+  grad.addColorStop(0, down ? 'rgba(255,255,255,0.95)' : `rgba(${r},${g},${b},0.8)`);
+  grad.addColorStop(0.4, `rgba(${r},${g},${b},${down?0.55:0.35})`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x,y,R*3,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function render(){
+  t += 0.016;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(fadeInk){
+    trailCtx.save();
+    trailCtx.globalCompositeOperation = 'destination-out';
+    trailCtx.fillStyle = 'rgba(0,0,0,0.02)';
+    trailCtx.fillRect(0,0,trailCanvas.width, trailCanvas.height);
+    trailCtx.restore();
+  }
+
+  if(cursorX !== null) drawCursor(cursorX, cursorY, penDown, drawColor);
+  scaleVal.textContent = penDown ? 'DOWN' : 'UP';
+  energyVal.textContent = handPresent ? 'LIVE' : 'IDLE';
+  updateAudio(penDown ? 340 : 210, penDown ? 0.06 : 0.015);
+
+  requestAnimationFrame(render);
+}
+render();
+
+// ---------- MediaPipe Hands setup ----------
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  selfieMode: true,
+  minDetectionConfidence: 0.6,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults((results) => {
+  const list = results.multiHandLandmarks || [];
+  handPresent = list.length > 0;
+  statusText.textContent = handPresent ? (list.length>1 ? 'DUAL HAND LOCK' : 'HAND LOCKED') : 'SEARCHING...';
+
+  if(list.length > 0){
+    const lm = list[0];
+    const thumb = lm[4], index = lm[8];
+    const dx = thumb.x-index.x, dy = thumb.y-index.y;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    const ix = index.x * canvas.width, iy = index.y * canvas.height;
+    cursorX = (cursorX===null) ? ix : lerp(cursorX, ix, 0.35);
+    cursorY = (cursorY===null) ? iy : lerp(cursorY, iy, 0.35);
+
+    if(!penDown && dist < PEN_DOWN_DIST){ penDown = true; penPrev = { x:cursorX, y:cursorY }; }
+    else if(penDown && dist > PEN_UP_DIST){ penDown = false; penPrev = null; }
+
+    if(penDown){
+      if(penPrev) drawStroke(penPrev.x, penPrev.y, cursorX, cursorY, drawColor);
+      penPrev = { x:cursorX, y:cursorY };
+    }
+  } else {
+    penDown = false; penPrev = null;
+  }
+});
+
+let mpCamera = null;
+
+async function startCamera(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: 1280, height: 720 },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    permOverlay.classList.add('hidden');
+    statusText.textContent = 'SEARCHING...';
+    initAudio();
+
+    mpCamera = new Camera(video, {
+      onFrame: async () => { await hands.send({image: video}); },
+      width: 1280,
+      height: 720
+    });
+    mpCamera.start();
+
+  } catch(err){
+    statusText.textContent = 'NO CAMERA';
+    const p = document.createElement('p');
+    p.style.color = '#ff4fa3';
+    p.textContent = 'Camera error: ' + err.message;
+    permOverlay.appendChild(p);
+    permOverlay.classList.remove('hidden');
+  }
+}
+
+startBtn.addEventListener('click', startCamera);
+</script>
+</body>
+</html>
